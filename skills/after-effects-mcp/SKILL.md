@@ -1,100 +1,49 @@
 ---
 name: after-effects-mcp
-description: "Operate or diagnose After Effects via Aodaruma/adobe-mcp-rs, ae-mcp, an existing Node bridge, or JSX automation. Use for Codex-AE setup and project operations; use hi-lo for expression-only work."
+description: "AE work router: laya-ae fixed commands, one-shot JSX via run_jsx.py, computer use for UI-only steps; MCP only for setup, diagnosis, or explicit requests. Expressions: hi-lo."
 ---
 
-# After Effects MCP
+# After Effects 작업 라우터
 
-Connect Codex to Adobe After Effects through the implementation already selected by the user. Default to diagnosis and a read-only smoke test. Installing software, enabling auto-run, executing mutating JSX, saving, rendering, or closing projects requires that action in the request.
+MCP 지침·도구를 매번 읽지 않는다. 처리 가능한 가장 가벼운 경로로 실행하고, 지원하지 않거나 실패할 때만 다음 단계로 간다. 표현식만 다루면 `hi-lo`.
 
-## Identify the stack
+| 순서 | 경로 | 쓰는 경우 |
+|---|---|---|
+| 1 | `laya-ae` 고정 명령 | 컴프 생성, 배경색, 텍스트·널·솔리드, 선택 레이어 이름·변형·표시, 불투명도 2점 키, 현재 상태 |
+| 2 | `ae_basic.py` 배치 | 1단계 조작 여러 개 |
+| 3 | `scripts/run_jsx.py` | 고정 명령 밖이지만 스크립트로 되는 작업(이펙트, 마커, 프리컴프, 표현식 적용, 렌더 큐 추가, 조회) |
+| 4 | 컴퓨터 유즈 | 스크립트 API 없는 UI(플러그인 패널, 대화상자, 환경설정), 화면 확인, 대화상자에 막힌 3단계 |
+| 5 | MCP·브리지 | MCP 지정·설치·진단 요청 때만 [MCP 설치·진단](references/mcp-setup.md)을 읽는다 |
 
-Before changing anything, record:
+한 요청도 나눈다. 예: 값 설정은 3단계, 플러그인 UI만 4단계.
 
-- OS and After Effects version/location
-- active Codex MCP registration, command, args, and startup error
-- server implementation and version
-- bridge/daemon process and data directory
-- AE panel state and scripting permission
-- open project and unsaved-work risk
+## 1–2단계: laya-ae
 
-Do not replace an existing Node bridge with `ae-mcp`, or the reverse, merely because this skill mentions both.
+- `ae-basic-laya`([AFTEREFFECT_LAYA](https://github.com/hyun2xyz/AFTEREFFECT_LAYA))의 명령이다. `command -v laya-ae`가 없으면 설치하지 말고 3단계로 간다.
+- 애매하면 `--dry-run`으로 해석만 보고 한 번 실행한다. 문형은 `laya-ae --list`, 배치는 `ae-basic-laya` commands.md의 배치 부분만 본다.
+- `unsupported`·파싱 실패는 3단계로. `partial`·timeout·receipt 누락은 재전송하지 말고 상태부터 읽는다. 출력은 요약만 읽는다.
 
-## Diagnose by layer
+## 3단계: 요청별 JSX 한 번
 
-1. **Codex config**: can the current CLI parse config and list the registered server?
-2. **MCP server**: does the exact registered command start and expose tools?
-3. **Broker/daemon**: is the local bridge process running and using the expected directory/port?
-4. **AE panel**: is the matching ScriptUI panel installed, open, and connected?
-5. **JSX execution**: can a non-mutating query return `app.version` from the intended AE instance?
+필요한 JSX 함수 본문만 쓰고 한 번 보낸다. MCP·브리지 패널 없이 Mac `DoScriptFile`, Windows `AfterFX.exe -r`로 실행한다.
 
-Stop at the first failing layer. Do not reinstall every layer at once.
-
-## Implementation notes
-
-### Aodaruma / `adobe-mcp-rs` / `ae-mcp`
-
-- `serve-stdio` connects the MCP client.
-- `serve-daemon` brokers AE instances and bridge commands.
-- A persistent service is optional and installed only when requested.
-- Use the current official release for the detected OS; verify release assets and checksums before install.
-- Older `Aodaruma/after-effects-mcp-rs` links may redirect to `Aodaruma/adobe-mcp-rs`; prefer the current repository and `adobe-mcp-rs-*` asset names.
-
-### Node/llamainator-style server
-
-- Verify the Node executable and registered built entry file exist.
-- Inspect the package's own bridge install instructions and current build output.
-- Rebuild or reinstall only the broken component; preserve working config and AE panels.
-- On this Mac, `/Users/han/after-effects-mcp/build/index.js` plus the `MCP Bridge Auto` panel may be the active path; verify its stdio initialization, `tools/list`, and `~/Documents/ae-mcp-bridge/` exchange files before replacing it.
-
-## Bridge setup
-
-- Discover the correct AE Scripts/ScriptUI Panels directory for the current OS and AE version.
-- Use the selected package's bridge installer or documented copy method after inspecting it.
-- Enabling “Allow Scripts to Write Files and Access Network” and “Auto-run commands” expands authority. Explain the impact and enable them only for the requested automation.
-- Multiple AE instances require an explicit target version or instance ID.
-
-## JSX safety
-
-- Execute only trusted local JSX whose source is visible in the task.
-- Start with a non-mutating smoke test such as returning `app.version`.
-- If the MCP implementation labels arbitrary JSX as `unsafe`, treat that as a warning, not a reason to run all code automatically.
-- Saving, rendering, importing, deleting, closing, or overwriting requires explicit target paths and effect review.
-- Preserve unsaved projects; do not close or replace them during diagnosis.
-- Use timeouts and a human-readable description for every command.
-
-Safe smoke payload shape when supported:
-
-```json
-{
-  "code": "return app.version;",
-  "description": "Read After Effects version",
-  "timeoutMs": 10000
-}
+```sh
+python3 scripts/run_jsx.py --description "Read AE version" --code 'return app.version;'
+python3 scripts/run_jsx.py --description "Add glow to selected layers" --undo /absolute/task.jsx
 ```
 
-Add implementation-specific mode fields only when required by the inspected tool schema.
+- `return {…}`으로 이름·ID·개수 같은 짧은 요약만 돌려준다. 상태를 모르면 필요한 값만 먼저 읽고, 변경은 한 본문에 묶는다.
+- 변경에는 `--undo`. 대상 컴프·레이어가 없거나 여럿이면 추측하지 말고 `throw`한다.
+- `error`는 `body line`을 보고 고쳐 다시 보낸다. `unknown`(timeout·결과 없음)은 재전송하지 말고 4단계로 대화상자를 확인한다.
+- 결과 파일에는 AE의 "스크립트가 파일을 쓰고 네트워크에 액세스하도록 허용"이 필요하다. 꺼져 있으면 영향을 설명하고 사용자가 켜게 한다. AE가 여러 버전이면 `--app`.
 
-## Common failures
+## 4단계: 컴퓨터 유즈
 
-- Server not listed: stale or invalid Codex config, old CLI, wrong profile.
-- Server exits: missing binary/build file, dependency error, incompatible args.
-- No AE instance: project manager/application state, panel closed, daemon mismatch.
-- Stale result: bridge roots or instance heartbeat differ.
-- Wrong instance: target version/ID not specified.
-- JSX timeout: modal dialog, blocked scripting permission, long render, or panel auto-run off.
+- 스크립트로 되는 일을 클릭으로 대신하지 않는다. AE 창만 `app_*` 도구로 다루고, 동작을 묶은 뒤 스크린샷은 한 번 찍는다.
+- 저장·렌더·덮어쓰기·삭제 버튼과 권한·보안 설정은 명시 요청 없이 누르지 않는다. UI 작업 뒤 3단계 읽기 JSX로 값을 확인한다.
 
-## Verification
+## 안전·검증·보고
 
-Verify separately:
-
-1. current CLI loads config and lists the server;
-2. server exposes expected MCP tools;
-3. broker sees the intended AE instance;
-4. read-only JSX returns the real AE version;
-5. requested mutation, if any, has visible AE/file readback.
-6. for visible floor collisions, render the calculated impact frame and keep the ball's visible lower edge tangent to the shadow or floor after squash/stretch: compensate `Position` for vertical compression; place the shadow behind the ball when possible, otherwise align its upper edge with no visible gap or overlap.
-
-## Completion
-
-Report the implementation, exact config/binary/bridge paths, layer that failed, changes made, smoke-test evidence, AE state left running, and any unverified save/render result. Never include credentials or unrelated project contents.
+- 저장 전 프로젝트를 닫거나 바꾸지 않는다. 저장·렌더·가져오기·삭제·덮어쓰기는 요청 범위와 명시 경로가 있을 때만 한다. 직접 쓰거나 확인한 JSX만 실행한다.
+- 완료는 readback 값이나 프레임 한 장으로 확인한다. 종료 코드 0이나 `prepared`는 완료가 아니다. 바닥 접촉 애니메이션은 [접촉 검수](references/animation-checks.md)를 읽는다.
+- 보고: 사용한 단계, 명령, readback 근거, 남은 수동 확인, AE에 남긴 상태.
